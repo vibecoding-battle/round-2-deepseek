@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f2b23">
+  <meta name="description" content="Paris en volume : une vue aérienne 3D interactive de Paris. Chaque bâtiment est extrudé à sa hauteur réelle, à partir des données OpenStreetMap.">
+  <title>Paris en volume — plan-relief numérique</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="fonts/BodoniModa-Variable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/Jost-Variable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="vendor/maplibre-gl.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!--
+    THESIS: A working plan-relief, not a dashboard over a map. Paris is the instrument; the UI is its museum label.
+    OWN-WORLD: Limestone, warm clay and Seine teal under late light; ink-green enamel, ivory paper, brass rules, Bodoni display and Jost captions.
+    STORY: Arrive above Paris, orbit the real volumes, read a building's true height, compare it to the city's landmarks.
+    FIRST VIEWPORT: Full-bleed oblique Paris between a thin green instrument header and an ivory landmark register; compact map controls and a height legend frame the view.
+    FORM: Interactive cartographic cabinet, resolved from the brief and the Paris plan-relief tradition. No seed roll was used.
+    FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md.
+  -->
+
+  <svg class="svg-sprite" aria-hidden="true" focusable="false">
+    <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="icon-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="icon-cube" viewBox="0 0 24 24"><path d="m12 3 7.5 4.3v9.4L12 21l-7.5-4.3V7.3L12 3Z"/><path d="m4.8 7.5 7.2 4.2 7.2-4.2M12 21v-9.3"/></symbol>
+    <symbol id="icon-expand" viewBox="0 0 24 24"><path d="M8.5 4H4v4.5M15.5 4H20v4.5M20 15.5V20h-4.5M8.5 20H4v-4.5"/></symbol>
+    <symbol id="icon-collapse" viewBox="0 0 24 24"><path d="M4 8.5h4.5V4M20 8.5h-4.5V4M15.5 20v-4.5H20M8.5 20v-4.5H4"/></symbol>
+    <symbol id="icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="icon-arrow-up-right" viewBox="0 0 24 24"><path d="M7 17 17 7M8 7h9v9"/></symbol>
+    <symbol id="icon-mouse" viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="5.5"/><path d="M12 6v4"/></symbol>
+    <symbol id="icon-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
+    <symbol id="icon-chevron-left" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
+  </svg>
+
+  <main class="app-shell" id="app">
+    <div class="map-stage">
+      <div id="map" aria-label="Vue aérienne 3D interactive de Paris"></div>
+      <div class="map-shade" aria-hidden="true"></div>
+      <div class="map-crosshair" aria-hidden="true">
+        <span></span><span></span>
+      </div>
+    </div>
+
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Paris en volume, recentrer la vue">
+        <span class="brand__seal" aria-hidden="true">
+          <svg viewBox="0 0 48 48">
+            <circle cx="24" cy="24" r="22.3"/>
+            <path d="M24 7.5c-.3 6.2-2.2 10.6-4.7 15.3-2.4 4.5-4.2 9.1-5.2 17.7M24 7.5c.3 6.2 2.2 10.6 4.7 15.3 2.4 4.5 4.2 9.1 5.2 17.7M16.9 28.7h14.2M19.5 19.7h9M22.2 13.2h3.6M11 40.5h26"/>
+          </svg>
+        </span>
+        <span class="brand__wordmark">
+          <span class="brand__name">Paris</span>
+          <span class="brand__sub">en volume</span>
+        </span>
+      </a>
+
+      <div class="telemetry" aria-label="Informations cartographiques">
+        <div class="telemetry__item telemetry__item--position">
+          <span class="telemetry__label">Position</span>
+          <span class="telemetry__value" id="coord-readout">48.8566° N · 2.3522° E</span>
+        </div>
+        <div class="telemetry__item">
+          <span class="telemetry__label">Heure</span>
+          <span class="telemetry__value" id="clock-readout">--:--</span>
+        </div>
+        <div class="telemetry__item telemetry__item--altitude">
+          <span class="telemetry__label">Altitude caméra</span>
+          <span class="telemetry__value" id="altitude-readout">—</span>
+        </div>
+      </div>
+
+      <div class="topbar__status">
+        <span class="status-lamp" aria-hidden="true"></span>
+        <span>Hauteurs réelles</span>
+        <span class="topbar__source">OSM</span>
+      </div>
+    </header>
+
+    <aside class="detail-panel" id="detail-panel" aria-label="Fiche du bâtiment" aria-hidden="true">
+      <div class="detail-panel__topline">
+        <span id="detail-kind">Fiche volume</span>
+        <button class="icon-button icon-button--bare" id="detail-close" type="button" aria-label="Fermer la fiche">
+          <svg><use href="#icon-close"></use></svg>
+        </button>
+      </div>
+      <div class="detail-panel__scroll" id="detail-content"></div>
+    </aside>
+
+    <aside class="height-key" id="height-key" aria-label="Légende des hauteurs de bâtiments">
+      <div class="height-key__head">
+        <span>Hauteur des volumes</span>
+        <span>mètres</span>
+      </div>
+      <div class="height-key__ramp" aria-hidden="true"></div>
+      <div class="height-key__ticks" aria-hidden="true">
+        <span>0</span><span>30</span><span>100</span><span>330</span>
+      </div>
+      <p class="height-key__note">Extrusion à partir des hauteurs OSM</p>
+    </aside>
+
+    <div class="map-tools" role="group" aria-label="Outils de la carte">
+      <button class="tool" id="zoom-in" type="button" aria-label="Zoomer" data-tooltip="Zoomer">
+        <svg><use href="#icon-plus"></use></svg>
+      </button>
+      <button class="tool" id="zoom-out" type="button" aria-label="Dézoomer" data-tooltip="Dézoomer">
+        <svg><use href="#icon-minus"></use></svg>
+      </button>
+      <span class="map-tools__rule" aria-hidden="true"></span>
+      <button class="tool tool--compass" id="compass-reset" type="button" aria-label="Revenir au nord" data-tooltip="Vue au nord">
+        <span class="compass" id="compass-dial" aria-hidden="true">
+          <span class="compass__n">N</span>
+          <span class="compass__needle"></span>
+        </span>
+      </button>
+      <button class="tool" id="view-toggle" type="button" aria-label="Passer en vue plan" aria-pressed="true" data-tooltip="Vue aérienne">
+        <svg><use href="#icon-cube"></use></svg>
+      </button>
+      <button class="tool" id="fullscreen-toggle" type="button" aria-label="Passer en plein écran" data-tooltip="Plein écran">
+        <svg><use id="fullscreen-icon" href="#icon-expand"></use></svg>
+      </button>
+    </div>
+
+    <div class="coachmark" id="coachmark">
+      <span class="coachmark__icon" aria-hidden="true"><svg><use href="#icon-mouse"></use></svg></span>
+      <p><strong>Prenez de la hauteur.</strong><span>Glissez pour orbiter. Survolez un bâtiment pour lire sa hauteur, cliquez pour ouvrir sa fiche.</span></p>
+      <button class="icon-button icon-button--bare coachmark__close" id="coachmark-close" type="button" aria-label="Masquer l'aide">
+        <svg><use href="#icon-close"></use></svg>
+      </button>
+    </div>
+
+    <div class="building-tip" id="building-tip" aria-hidden="true">
+      <span class="building-tip__height" id="building-tip-height">—</span>
+      <span class="building-tip__label">bâtiment</span>
+    </div>
+
+    <footer class="bottombar">
+      <div class="bottombar__index">
+        <span class="bottombar__title">Repères</span>
+        <span class="bottombar__hint">Choisir un monument</span>
+      </div>
+
+      <nav class="place-nav" id="place-nav" aria-label="Monuments parisiens">
+        <button class="place-button" type="button" data-place="eiffel">
+          <span class="place-button__index">01</span>
+          <span class="place-button__text">Tour Eiffel<em>330 m</em></span>
+        </button>
+        <button class="place-button" type="button" data-place="arc">
+          <span class="place-button__index">02</span>
+          <span class="place-button__text">Arc de Triomphe<em>50 m</em></span>
+        </button>
+        <button class="place-button" type="button" data-place="notre-dame">
+          <span class="place-button__index">03</span>
+          <span class="place-button__text">Notre-Dame<em>96 m</em></span>
+        </button>
+        <button class="place-button" type="button" data-place="montparnasse">
+          <span class="place-button__index">04</span>
+          <span class="place-button__text">Montparnasse<em>210 m</em></span>
+        </button>
+        <button class="place-button" type="button" data-place="sacre-coeur">
+          <span class="place-button__index">05</span>
+          <span class="place-button__text">Sacré-Cœur<em>83 m</em></span>
+        </button>
+      </nav>
+
+      <div class="bottombar__tools">
+        <div class="scale-readout" aria-label="Échelle de la carte">
+          <span class="scale-readout__bar" id="scale-bar"></span>
+          <span class="scale-readout__value" id="scale-value">100 m</span>
+          <span class="scale-readout__ratio" id="scale-ratio">1 : 2 500</span>
+        </div>
+        <p class="source-line">
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap</a>
+          <span>·</span>
+          <a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer">OpenFreeMap</a>
+          <span>·</span>
+          <a href="https://openmaptiles.org" target="_blank" rel="noopener noreferrer">OpenMapTiles</a>
+        </p>
+      </div>
+    </footer>
+
+    <section class="loader" id="loader" aria-live="polite" aria-label="Chargement de Paris en volume">
+      <div class="loader__frame" aria-hidden="true">
+        <span>48° 51′ 24″ N</span>
+        <span>2° 21′ 08″ E</span>
+        <span>Plan-relief / 01</span>
+        <span>Échelle 1:1</span>
+      </div>
+      <div class="loader__halo" aria-hidden="true"></div>
+      <div class="loader__inner">
+        <div class="loader__seal" aria-hidden="true">
+          <svg viewBox="0 0 48 48">
+            <circle cx="24" cy="24" r="22.3"/>
+            <path d="M24 7.5c-.3 6.2-2.2 10.6-4.7 15.3-2.4 4.5-4.2 9.1-5.2 17.7M24 7.5c.3 6.2 2.2 10.6 4.7 15.3 2.4 4.5 4.2 9.1 5.2 17.7M16.9 28.7h14.2M19.5 19.7h9M22.2 13.2h3.6M11 40.5h26"/>
+          </svg>
+        </div>
+        <p class="loader__place">Paris</p>
+        <h1 class="loader__title">en volume</h1>
+        <p class="loader__sub">La ville à sa vraie hauteur</p>
+        <div class="loader__progress">
+          <div class="loader__progress-head">
+            <span id="loader-status">Connexion au plan-relief…</span>
+            <span id="loader-percent">00</span>
+          </div>
+          <div class="loader__track"><i id="loader-bar"></i></div>
+        </div>
+        <p class="loader__credit">Hauteurs de bâtiments · OpenStreetMap</p>
+      </div>
+      <div class="loader__error" id="loader-error" hidden>
+        <p>Le plan-relief n'a pas pu être chargé.</p>
+        <button type="button" id="loader-retry">Réessayer</button>
+      </div>
+    </section>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <noscript><div class="noscript">Activez JavaScript pour explorer le plan-relief de Paris.</div></noscript>
+  </main>
+
+<script src="vendor/maplibre-gl.js"></script>
+<script src="vendor/three.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
